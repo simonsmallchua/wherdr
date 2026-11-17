@@ -1060,7 +1060,25 @@ export function isMissing(e: unknown): boolean {
   return err.code === 'remote' && /no such file|not a directory|introuvable/i.test(err.message || '')
 }
 
-export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, codexHistory }: { home: string, herdr: HerdrCall, fs?: MachineFs, now?: () => number, codexHistory?: CodexHistory }) {
+// omp's name for a terminal in ~/.omp/agent/terminal-sessions: the tty without
+// `/dev/`, `/` -> `-` (`pts/3` -> `pts-3`, `ttys003` stays). `ps` may print
+// the macOS tty as `s003` and a process without terminal as `?`/`??`/`-`.
+export function ompTerminalName(tty: string | null | undefined): string | null {
+  let t = String(tty || '').trim().replace(/^\/dev\//, '')
+  if (/^s\d+$/.test(t)) t = `tty${t}`
+  t = t.replace(/\//g, '-')
+  return /^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(t) && !t.includes('..') ? t : null
+}
+
+export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, codexHistory, ttyOf }: {
+  home: string
+  herdr: HerdrCall
+  fs?: MachineFs
+  now?: () => number
+  codexHistory?: CodexHistory
+  // Controlling terminal of a process of this machine (`pts/3`), null if none or unknown.
+  ttyOf?: (pid: number) => Promise<string | null>
+}) {
   // The machine's paths (POSIX for a remote Linux machine, even from a Windows host).
   const path = machinePath(home)
   const devin = createDevinTranscripts({ home, fs, now })
@@ -1287,6 +1305,31 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
     return best && { file: best.file, session: path.basename(best.file, '.jsonl'), guessed: true }
   }
 
+  // omp writes `cwd`, the session file and a `cwdstat` line to
+  // ~/.omp/agent/terminal-sessions/<tty> (updated by /new, /resume): the file
+  // of the omp that owns the terminal, without any help from the terminal. When
+  // the tty cannot be read, or has no such file, the folder's newest session is
+  // the guess (locateOmp).
+  async function locateOmpPane(pane: TranscriptPane): Promise<Loc | null> {
+    if (!ttyOf) return locateOmp(pane)
+    const proc = await paneProcess(pane.id, 'omp')
+    if (!proc || !Number.isSafeInteger(proc.pid) || proc.pid <= 0) return locateOmp(pane)
+    const name = ompTerminalName(await ttyOf(proc.pid))
+    if (!name) return locateOmp(pane)
+    let crumb: string
+    try { crumb = await fs.readFile(path.join(home, '.omp/agent/terminal-sessions', name)) }
+    catch (e) {
+      if (isMissing(e)) return locateOmp(pane)
+      throw e
+    }
+    const line = crumb.split('\n')[1]?.trim()
+    if (!line || !path.isAbsolute(line)) return null
+    const f = path.normalize(line)
+    const root = path.join(home, '.omp/agent/sessions') + path.sep
+    if (!f.startsWith(root) || !f.endsWith('.jsonl') || transcriptKind(f) !== 'omp' || !await exists(f)) return null
+    return { file: f, session: f }
+  }
+
   // Codex panes of the machine (kept up to date by the state): for the claims.
   const codexPeers = new Map<string, TranscriptPane>()
   // Agents seen at work: they have a conversation (see shared/integrations.ts).
@@ -1375,7 +1418,7 @@ export function createTranscripts({ home, herdr, fs = localFs, now = Date.now, c
         const proc = await paneProcess(pane.id, 'claude')
         if (proc) loc = await locateClaude(proc)
       }
-      if (!loc && pane.agent === 'omp') loc = await locateOmp(pane)
+      if (!loc && pane.agent === 'omp') loc = await locateOmpPane(pane)
     } catch { failed = true }
     // Failed read (SSH, timeout): we keep the last known file rather
     // than conclude "no conversation" (the view would empty for a second).

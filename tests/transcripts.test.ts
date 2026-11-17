@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from 
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { createTranscripts, extractImage, parseLines, stripBlobs } from '../server/utils/transcripts'
+import { createTranscripts, extractImage, ompTerminalName, parseLines, stripBlobs } from '../server/utils/transcripts'
 
 const fx = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')
 const HOME = '/home/user'
@@ -321,6 +321,95 @@ describe('omp', () => {
     writeFileSync(withCmd, msg({ role: 'user', content: [{ type: 'text', text: '# Aside\n\nRéponds vite.\n\nquelle heure ?' }], attribution: 'user' }, '2026-01-02T00:00:00Z') + '\n')
     const t2 = createTranscripts({ home, herdr: async () => { throw new Error('pas de Herdr') } })
     expect((await t2.chat({ ...omp, id: 'wO:p5', agentSession: withCmd }, {})).items!.map(i => i.text)).toEqual(['/aside quelle heure ?'])
+  })
+
+  it('names omp terminals like omp does', () => {
+    expect(ompTerminalName('pts/3')).toBe('pts-3')
+    expect(ompTerminalName('/dev/pts/15\n')).toBe('pts-15')
+    expect(ompTerminalName('ttys003')).toBe('ttys003')
+    expect(ompTerminalName('s003')).toBe('ttys003')
+    for (const none of ['?', '??', '-', '', null, undefined, '../x', 'pts/../../x']) expect(ompTerminalName(none)).toBeNull()
+  })
+
+  it('finds the session of an omp terminal from its tty (terminal-sessions)', async () => {
+    const home = mkdtempSync(path.join(tmpdir(), 'hw-omp-tty-'))
+    const dir = path.join(home, '.omp/agent/sessions/-x')
+    mkdirSync(dir, { recursive: true })
+    mkdirSync(path.join(home, '.omp/agent/terminal-sessions'), { recursive: true })
+    const crumb = (name: string, session: string) => writeFileSync(path.join(home, '.omp/agent/terminal-sessions', name), `/x\n${session}\ncwdstat 1 2\n`)
+    const file = path.join(dir, '2026-01-01T00-00-00-000Z_s1.jsonl')
+    writeFileSync(file, lines)
+    const herdr = async () => ({ process_info: { foreground_processes: [{ pid: 321, name: 'omp', argv: ['omp'] }] } })
+    const ttys: Record<number, string | null> = { 321: 'pts/3' }
+    const t = createTranscripts({ home, herdr, ttyOf: async pid => ttys[pid] ?? null })
+    const pane = (id: string) => ({ id, agent: 'omp', cwd: '/x' })
+
+    // No terminal-sessions file for that tty (and no session folder for /x): nothing.
+    expect(await t.locate(pane('a'))).toBeNull()
+    // Valid mapping pts/3 -> pts-3.
+    crumb('pts-3', file)
+    expect(await t.locate(pane('b'))).toEqual({ file, session: file })
+    expect((await t.chat(pane('b2'), {})).available).toBe(true)
+    // /new: the terminal now points at another file (a pane looked up again).
+    const next = path.join(dir, '2026-01-02T00-00-00-000Z_s2.jsonl')
+    writeFileSync(next, lines)
+    crumb('pts-3', next)
+    t.forget('b')
+    expect(await t.locate(pane('b'))).toEqual({ file: next, session: next })
+    // A tty with no terminal, or no breadcrumb for it: only the folder lookup remains (empty for /x).
+    ttys[321] = null
+    expect(await t.locate(pane('c'))).toBeNull()
+    ttys[321] = 'pts/9'
+    expect(await t.locate(pane('d'))).toBeNull()
+    // Without a way to read the tty (no ttyOf): the folder lookup alone, empty for /x.
+    expect(await createTranscripts({ home, herdr }).locate(pane('e'))).toBeNull()
+
+    // Only an omp session file under ~/.omp/agent/sessions, absolute, .jsonl, existing.
+    ttys[321] = 'pts/3'
+    const outside = path.join(home, 'autre.jsonl')
+    writeFileSync(outside, lines)
+    const other = path.join(home, '.claude/projects/-x/s.jsonl')
+    mkdirSync(path.dirname(other), { recursive: true })
+    writeFileSync(other, lines)
+    const bad = [outside, other, `${dir}/../../../../autre.jsonl`, path.join(dir, 'absent.jsonl'), path.relative(home, file), path.join(dir, 'x.txt'), dir, '']
+    for (const [i, session] of bad.entries()) {
+      crumb('pts-3', session)
+      expect(await t.locate(pane(`bad${i}`)), session).toBeNull()
+    }
+  })
+
+  it('falls back to the newest session of the terminal\'s omp folder when its tty names none', async () => {
+    const home = mkdtempSync(path.join(tmpdir(), 'hw-omp-folder-'))
+    const cwd = path.join(home, 'proj')
+    const dir = path.join(home, '.omp/agent/sessions/-proj')
+    const crumbs = path.join(home, '.omp/agent/terminal-sessions')
+    mkdirSync(dir, { recursive: true })
+    mkdirSync(crumbs, { recursive: true })
+    const older = path.join(dir, '2026-01-01T00-00-00-000Z_s1.jsonl')
+    const newest = path.join(dir, '2026-01-02T00-00-00-000Z_s2.jsonl')
+    for (const [file, ago] of [[older, 7_200_000], [newest, 3_600_000]] as const) {
+      writeFileSync(file, lines)
+      const at = new Date(Date.now() - ago)
+      utimesSync(file, at, at)
+    }
+    const herdr = async () => ({ process_info: { foreground_processes: [{ pid: 321, name: 'omp', argv: ['omp'] }] } })
+    const ttys: Record<number, string | null> = { 321: 'pts/3' }
+    const t = createTranscripts({ home, herdr, ttyOf: async pid => ttys[pid] ?? null })
+    const pane = (id: string) => ({ id, agent: 'omp', cwd })
+    const guess = { file: newest, session: path.basename(newest, '.jsonl'), guessed: true }
+
+    // No terminal-sessions file for the tty, no tty, no way to read it: the folder's newest session.
+    expect(await t.locate(pane('a'))).toEqual(guess)
+    ttys[321] = null
+    expect(await t.locate(pane('b'))).toEqual(guess)
+    expect(await createTranscripts({ home, herdr }).locate(pane('c'))).toEqual(guess)
+    // The terminal's own file is no guess, and wins over a newer file of the folder.
+    ttys[321] = 'pts/3'
+    writeFileSync(path.join(crumbs, 'pts-3'), `${cwd}\n${older}\ncwdstat 1 2\n`)
+    expect(await t.locate(pane('d'))).toEqual({ file: older, session: older })
+    // The file it names does not exist yet (omp writes it with its first reply): not another conversation meanwhile.
+    writeFileSync(path.join(crumbs, 'pts-3'), `${cwd}\n${path.join(dir, '2026-01-03T00-00-00-000Z_s3.jsonl')}\ncwdstat 1 2\n`)
+    expect(await t.locate(pane('e'))).toBeNull()
   })
 
   it('keeps reading an omp session as omp while the pane reports another agent', async () => {
