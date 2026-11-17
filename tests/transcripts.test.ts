@@ -3,7 +3,7 @@
 import { mkdirSync, mkdtempSync, readFileSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { createTranscripts, extractImage, ompTerminalName, parseLines, stripBlobs } from '../server/utils/transcripts'
 
 const fx = (name: string) => readFileSync(new URL(`./fixtures/${name}`, import.meta.url), 'utf8')
@@ -410,6 +410,98 @@ describe('omp', () => {
     // The file it names does not exist yet (omp writes it with its first reply): not another conversation meanwhile.
     writeFileSync(path.join(crumbs, 'pts-3'), `${cwd}\n${path.join(dir, '2026-01-03T00-00-00-000Z_s3.jsonl')}\ncwdstat 1 2\n`)
     expect(await t.locate(pane('e'))).toBeNull()
+  })
+
+  it('looks for an omp session again after a second, not 8: its file only appears with the first reply', async () => {
+    const home = mkdtempSync(path.join(tmpdir(), 'hw-omp-miss-'))
+    const dir = path.join(home, '.omp/agent/sessions/-x')
+    mkdirSync(dir, { recursive: true })
+    mkdirSync(path.join(home, '.omp/agent/terminal-sessions'), { recursive: true })
+    const crumb = (session: string, fresh: boolean) => writeFileSync(path.join(home, '.omp/agent/terminal-sessions/pts-3'), `/x\n${session}\n${fresh ? 'fresh\n' : ''}cwdstat 1 2\n`)
+    const file = path.join(dir, '2026-01-01T00-00-00-000Z_s1.jsonl')
+    const next = path.join(dir, '2026-01-02T00-00-00-000Z_s2.jsonl')
+    const herdr = async () => ({ process_info: { foreground_processes: [{ pid: 321, name: 'omp', argv: ['omp'] }] } })
+    const t = createTranscripts({ home, herdr, ttyOf: async () => 'pts/3' })
+    const omp = { id: 'wM:p1', agent: 'omp', cwd: '/x' }
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      // A new omp has written its terminal-sessions file (marked fresh), not its session file.
+      crumb(file, true)
+      expect(await t.chat(omp, {})).toEqual({ available: false, reason: 'not_found' })
+      // Its first reply creates the file: the next poll still gets the answer it just had…
+      writeFileSync(file, lines)
+      crumb(file, false)
+      vi.advanceTimersByTime(500)
+      expect((await t.chat(omp, {})).available).toBe(false)
+      // …and the conversation shows a second later (8 s would leave "No conversation" that long).
+      vi.advanceTimersByTime(600)
+      const r = await t.chat(omp, {})
+      expect(r.available).toBe(true)
+      expect(r.items!.map(i => i.role)).toContain('assistant')
+      // A conversation found is kept 8 s, as for every agent: /new shows after that.
+      writeFileSync(next, lines)
+      crumb(next, false)
+      vi.advanceTimersByTime(5000)
+      expect(await t.locate(omp)).toEqual({ file, session: file })
+      vi.advanceTimersByTime(4000)
+      expect(await t.locate(omp)).toEqual({ file: next, session: next })
+    } finally { vi.useRealTimers() }
+  })
+
+  it('ignores the terminal-sessions file a tty\'s previous omp left, unless omp continues a session', async () => {
+    const home = mkdtempSync(path.join(tmpdir(), 'hw-omp-stale-'))
+    const dir = path.join(home, '.omp/agent/sessions/-x')
+    const crumbs = path.join(home, '.omp/agent/terminal-sessions')
+    mkdirSync(dir, { recursive: true })
+    mkdirSync(crumbs, { recursive: true })
+    const previous = path.join(dir, '2026-01-01T00-00-00-000Z_s1.jsonl')
+    writeFileSync(previous, lines)
+    const found = { file: previous, session: previous }
+    // The terminal's folder holds a session written since the terminal appeared: it never stands in for a
+    // terminal-sessions file refused as stale (the folder lookup is for a tty that names nothing).
+    const recent = path.join(home, '.omp/agent/sessions/--x--/2026-01-02T00-00-00-000Z_s2.jsonl')
+    mkdirSync(path.dirname(recent), { recursive: true })
+    writeFileSync(recent, lines)
+    // The terminal-sessions file of the tty, last written `ago` ms ago.
+    const crumb = (ago: number) => {
+      const f = path.join(crumbs, 'ttys002')
+      writeFileSync(f, `/x\n${previous}\ncwdstat 1 2\n`)
+      const at = new Date(Date.now() - ago)
+      utimesSync(f, at, at)
+    }
+    let argv = ['omp']
+    const herdr = async () => ({ process_info: { foreground_processes: [{ pid: 7, name: 'omp', argv }] } })
+    const t = createTranscripts({ home, herdr, ttyOf: async () => 'ttys002' })
+    const born = Date.now() - 60_000 // the terminal appeared a minute ago
+    let n = 0
+    const pane = () => ({ id: `wS:p${++n}`, agent: 'omp', cwd: '/x', bornAt: born })
+
+    // Written an hour ago, before this terminal existed: the previous omp's, not this one's.
+    crumb(3_600_000)
+    expect(await t.locate(pane())).toBeNull()
+    // The new omp rewrote it when it started its session.
+    crumb(30_000)
+    expect(await t.locate(pane())).toEqual(found)
+    // A margin for the clocks and the file's date: a second before the terminal counts, three do not.
+    crumb(61_000)
+    expect(await t.locate(pane())).toEqual(found)
+    crumb(63_000)
+    expect(await t.locate(pane())).toBeNull()
+
+    // omp asked to continue a session keeps the file it finds, unchanged, so older than the terminal.
+    crumb(3_600_000)
+    for (const args of [['omp', '-c'], ['omp', '--continue'], ['omp', '-r', 'abc'], ['omp', '--resume=abc'], ['omp', '--restore', previous]]) {
+      argv = args
+      expect(await t.locate(pane()), args.join(' ')).toEqual(found)
+    }
+    // Other launches (a prompt, other flags, no session at all) have nothing of the previous omp's.
+    for (const args of [['omp'], ['omp', '--model', 'opus'], ['omp', 'continue the work'], ['omp', '--no-session']]) {
+      argv = args
+      expect(await t.locate(pane()), args.join(' ')).toBeNull()
+    }
+    // A pane whose birth is unknown has nothing to be compared with: the file is read as before.
+    argv = ['omp']
+    expect(await t.locate({ id: 'wS:nb', agent: 'omp', cwd: '/x' })).toEqual(found)
   })
 
   it('keeps reading an omp session as omp while the pane reports another agent', async () => {

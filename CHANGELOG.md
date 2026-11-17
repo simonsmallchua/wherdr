@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Fixed
+
+- **An omp conversation shows a second after omp wrote it, and is never the tty's previous omp's.** omp creates its conversation file with its first reply, not when it starts, and wherdr kept “no conversation” for 8 seconds after each look, so a new omp's pane stayed on “No conversation for this agent yet.” (or on the message you had sent) for ten seconds or more after the reply. It now looks again every second until the file exists. And omp names its session file in `~/.omp/agent/terminal-sessions/<tty>`, where a new terminal that reuses a tty finds the previous omp's file until the new omp rewrites it, a moment after starting: the pane could show that other conversation for a few seconds. A file older than the terminal is now ignored, unless omp was started with `-c`/`--continue`, `-r`/`--resume` or `--restore`. Where the tty cannot be read or has no such file, the conversation is the newest one in omp's folder for the terminal's folder (the lookup of 3.2.2).
+
 ## [3.2.2] — 2026-11-19
 
 wherdr 3.2.2 brings back *Open in editor* on v3 (Mod+Alt+O) and fixes omp: its conversations open from herdr-core terminals, its status shows with an extension's status line, an omp coordinator keeps coordinating, and a project's default workflow runs on its coordinator's agent. Release notes: [docs/release-notes-3.2.2.md](docs/release-notes-3.2.2.md).
