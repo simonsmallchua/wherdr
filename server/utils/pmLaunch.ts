@@ -27,6 +27,7 @@ import { isOpen, type Incident, type Recovery } from '../../shared/pm/incident'
 import { recordGone, type CoreList } from './pmIncidents'
 import { interruptTask } from './pmRecovery'
 import { pmDir } from './pmHome'
+import { pmFolderCheck } from './pmFolder'
 import { INSTRUCTIONS_CAP, repoPath, workspaceInstructions, workspaceOf, workspaceSkills } from '../../shared/pm/workspace'
 import { contextArgs, contextLine, contextMembers, contextRoot, contextSection, taskContext, type ContextFolder } from '../../shared/pm/context'
 import type { Template } from '../../shared/pm/workflow'
@@ -407,8 +408,10 @@ async function startOnce(deps: PmLaunchDeps, id: unknown, { handover, revive, on
   if (asRead.kind === 'feature') throw new HerdrError('refused', `${asRead.id} is a feature: it runs no agent, start its sub-tasks`)
   let task = asRead
   if (task.state === 'working' && !revive) throw new HerdrError('busy', 'This task is already working')
-  const found = (await store.projects()).find(x => x.key === asRead.project)
+  let found = (await store.projects()).find(x => x.key === asRead.project)
   if (!found) throw new HerdrError('not_found', 'Unknown project')
+  // Added before its folder had git: look again, the user may have run git init since.
+  if (found.git === false) found = await store.recheckGit(found.key, (m, f, o) => pmFolderCheck(m, f, o, deps)).catch(() => found!)
   const placed = taskMachine(task, found, asked)
   if ('refused' in placed) throw new HerdrError('refused', placed.refused)
   const same = task.step?.started || revive || anyway ? undefined : fileConflict(task, await store.tasks(), await mergingOf(store))

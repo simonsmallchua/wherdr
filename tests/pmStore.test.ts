@@ -16,6 +16,17 @@ const template = { id: 'vibe', version: 1, taskTypes: { simple: { steps: [{ id: 
 const input = { key: 'web', name: 'Web app', machine: '', path: '~/src/web', template: 'vibe' }
 
 describe('pm store', () => {
+  it('clears git: false once the folder is a repository, and keeps it while it is not', async () => {
+    const store = createPmStore(dir)
+    await store.setEnabled(true)
+    await fs.writeFile(store.files.projects, JSON.stringify({ v: 1, projects: [{ key: 'DOCS', name: 'Docs', machine: '', path: '/home/u/docs', git: false, addedAt: 1 }] }))
+    const check = vi.fn(async (_m: string, p: string, _o?: unknown) => ({ path: p, git: false }))
+    expect(await store.recheckGit('DOCS', check)).toMatchObject({ git: false })
+    expect(check).toHaveBeenCalledWith('', '/home/u/docs', { plain: true })
+    expect(await store.recheckGit('DOCS', async (_m, p) => ({ path: p, git: true }))).not.toHaveProperty('git')
+    expect((await store.project('DOCS'))!.git).toBeUndefined()
+  })
+
   it('is off by default, and off it refuses every write without touching the disk', async () => {
     const store = createPmStore(dir)
     expect(await store.overview()).toEqual({ enabled: false, projects: [], templates: [], tasks: [] })

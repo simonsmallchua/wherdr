@@ -683,6 +683,20 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
       return list[i]!
     }),
 
+    // A project added while its folder had no git is stored git: false: asked again when a task starts,
+    // and cleared once the folder is a repository. A workspace stays without git.
+    recheckGit: (key: unknown, check: FolderCheck) => write(async () => {
+      const { list, i } = await findProject(key)
+      const p = list[i]!
+      if (p.git !== false || isWorkspace(p)) return p
+      const checked = await check(p.machine, p.path, { plain: true })
+      if (typeof checked !== 'string' && !checked.git) return p
+      const { git: _git, ...rest } = p
+      list[i] = rest
+      await saveProjects(list)
+      return rest
+    }),
+
     // A public repository's guardrails: its visibility, checked by wherdr or set by the user.
     setVisibility: (key: unknown, v: RepoVisibility) => write(async () => {
       if (!['public', 'private', 'unknown'].includes(v?.value)) throw badInput([{ path: 'value', message: 'public or private' }])

@@ -64,6 +64,10 @@ describe('who may remove', () => {
     // Started, stopped, or an agent once ran on it (a worktree may exist): stop and archive instead.
     for (const t of [working(), stop(working()), todo({ run: 'r1' })]) expect(removeRefusal(t, [], [], user)).toMatch(/has started/)
     expect(removeRefusal(todo(), [{ task: 'WH-1' }], [], user)).toMatch(/has started/)
+    // A failed start leaves the task waiting, never run: removable all the same.
+    expect(removeRefusal(todo({ state: 'waiting', waiting: 'The project folder is not a git repository' }), [], [], user)).toBeUndefined()
+    expect(cardOf(todo({ state: 'waiting' }), plan, []).removable).toBe(true)
+    expect(removeRefusal(todo({ state: 'waiting', run: 'r1' }), [], [], user)).toMatch(/has started/)
     const waiters = [todo({ id: 'WH-2', after: 'WH-1' }), todo({ id: 'WH-3', after: 'WH-9, WH-1' }), todo({ id: 'XX-1', project: 'XX', after: 'WH-1' })]
     expect(removeRefusal(todo(), [], waiters, user)).toBe('WH-2, WH-3, XX-1 wait for WH-1 (after): remove them first') // XX-1: another project of its workspace
     expect(cardOf(todo(), plan, []).removable).toBe(true)
