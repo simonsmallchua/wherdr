@@ -187,6 +187,15 @@ describe('end signals', () => {
       .toEqual(['Original report', 'Reported done.'])
   })
 
+  it('a worker\'s done with uncommitted changes is sent back to commit; clean, it goes through', () => {
+    const step = planSteps(company, { type: 'feature' }).find(s => s.id === 'work')
+    expect(signalEvent(step, 'worker', read({ dirty: true }))).toEqual({ fix: `Commit your work, then run ${DONE_CMD} again` })
+    expect(signalEvent(step, 'worker', read())).toMatchObject({ kind: 'report' })
+    const out = ['abc', '3', 'note', '', 'main', '', '', '', ' M a.ts\n'].join(`${READ_SEP}\n`)
+    expect(parseRead(out).dirty).toBe(true)
+    expect(parseRead(out.replace(' M a.ts', '')).dirty).toBeUndefined()
+  })
+
   it('a verdict that does not parse is sent back to the reviewer, with how to answer', () => {
     const step = planSteps(company, { type: 'feature' }).find(s => s.id === 'review')
     expect(signalEvent(step, 'reviewer', read({ verdict: 'LGTM' }))).toEqual({ fix: expect.stringContaining(DONE_CMD) })

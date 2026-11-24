@@ -40,7 +40,7 @@ import { needsHumanReport } from './pmNeedsHuman'
 import { blockedOn } from './pmPark'
 
 // The task's commit, its diff size since the branch started, the worker's note, the verdict file,
-// its branch, then its own commits (no merges) and files per line count since its fork from the base ($5).
+// its branch, then its own commits (no merges) and files per line count since its fork from the base ($5), the report file before this round, then the uncommitted changes.
 export const SIGNAL_READ_SCRIPT = `wt=$1 b=$2 base=$5
 git -C "$wt" rev-parse -q --verify HEAD; echo "${READ_SEP}"
 s=$(git -C "$wt" config "branch.$b.wherdrstart")
@@ -53,7 +53,8 @@ m=
 [ -n "$m" ] || m=$s
 git -C "$wt" log --no-merges --format='%at %s' \${m:+"$m..HEAD"} 2>/dev/null | cksum; echo "${READ_SEP}"
 git -C "$wt" diff --numstat \${m:+"$m"} HEAD 2>/dev/null; echo "${READ_SEP}"
-cat "$6" 2>/dev/null`
+cat "$6" 2>/dev/null; echo; echo "${READ_SEP}"
+git -C "$wt" status --porcelain 2>/dev/null`
 // The task moves to the branch its worker pushed: its start point (and takeover tip) goes with it.
 const FOLLOW_SCRIPT = `for k in wherdrstart wherdrtaken; do s=$(git -C "$1" config "branch.$2.$k") && git -C "$1" config "branch.$3.$k" "$s"; done; exit 0`
 
