@@ -28,6 +28,8 @@ All notable changes to this project are documented here. The format follows
 - **The `/` list of omp and Claude Code also offers their screen-only commands.** Neither agent reports what it keeps to its own screen, so a short list kept by hand (omp: `/clear`, `/new`, `/resume`, `/restart`, `/settings`, `/help`, `/exit`…; Claude Code: `/clear`, `/resume`, `/permissions`, `/help`, `/config`, `/rewind`, `/exit`…) follows the agent's own list. Where the agent lists the same command itself, its entry (and description) is the one shown. The installed program is not read for these names (#1027).
 
 ### Fixed
+
+- **A clean worktree no longer breaks the engine's read of a worker's or reviewer's end signal.** The read's last separator came back without its newline once the output was trimmed, so the report file was taken for a copy of itself and rewritten with the separator on top, and a reviewer's valid verdict was read as invalid (the step stayed in review and looked stalled).
 - **A worker cannot end its step with uncommitted changes.** The `done` label is refused while `git status --porcelain` is not empty in its worktree; the worker is told to commit its work and run the done command again. A chained `commit; hc label … done` whose commit failed no longer hands the step to the reviewer.
 
 - **A finding the worker contests reaches the reviewer.** A line `Contested: <finding id>` (several ids separated by commas) in the worker's report is now kept as a dispute: the reviewer of the next round is told which findings the agent contests, and a finding contested and sent back again goes to *Your turn* as an arbitration instead of another send-back.

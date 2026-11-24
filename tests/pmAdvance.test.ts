@@ -196,6 +196,17 @@ describe('end signals', () => {
     expect(parseRead(out.replace(' M a.ts', '')).dirty).toBeUndefined()
   })
 
+  it('a clean worktree: the trimmed output ends on the separator, the report and the verdict are read from their own sections', () => {
+    const verdict = '{"findings":[]}'
+    const out = ['abc', '3', '\nhttps://example.com/pull/1\n\n', `${verdict}\n\n`, 'main\n', '1 2\n', '1\t0\ta.ts\n', '\n', ''].join(`${READ_SEP}\n`).trim()
+    expect(out.endsWith(READ_SEP)).toBe(true)
+    const r = parseRead(out)
+    expect(r).toMatchObject({ note: 'https://example.com/pull/1', verdict })
+    expect(r.rewrote).toBeUndefined()
+    expect(r.whole).toBeUndefined()
+    expect(r.dirty).toBeUndefined()
+  })
+
   it('a verdict that does not parse is sent back to the reviewer, with how to answer', () => {
     const step = planSteps(company, { type: 'feature' }).find(s => s.id === 'review')
     expect(signalEvent(step, 'reviewer', read({ verdict: 'LGTM' }))).toEqual({ fix: expect.stringContaining(DONE_CMD) })
