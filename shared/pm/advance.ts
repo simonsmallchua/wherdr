@@ -69,9 +69,10 @@ export function reviewFile(task: Pick<Task, 'id' | 'title' | 'description' | 'sp
 export interface SignalRead { head?: string, diffLines?: number, note: string, whole?: string, rewrote?: true, verdict: string, branch?: string, work?: Work, dirty?: true }
 export const READ_SEP = '--wherdr-read--'
 export type Work = NonNullable<Task['work']>
-export function parseRead(out: string): SignalRead {
+export function parseRead(out: string, sep: string): SignalRead {
   // The engine trims the script's output: a clean worktree leaves the last separator with no newline after it.
-  const [head = '', lines = '', note = '', verdict = '', branch = '', commits = '', numstat = '', before = '', status = ''] = out.split(new RegExp(`${READ_SEP}(?:\\n|$)`))
+  // sep is drawn at random for each read, so no file's content (a report's stray line) can split the sections.
+  const [head = '', lines = '', note = '', verdict = '', branch = '', commits = '', numstat = '', before = '', status = ''] = out.split(new RegExp(`${sep.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:\\n|$)`))
   const n = Number.parseInt(lines, 10)
   const files = numstat.split('\n').map(l => l.split('\t')).filter(c => c.length >= 3)
     .map(([a, d, ...p]) => ({ path: p.join('\t'), add: Number(a) || 0, del: Number(d) || 0 })).slice(0, 200)

@@ -31,6 +31,7 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- **A line of a report file can no longer break the engine's read of a worker's or reviewer's end signal.** The read cut the output of one script at a fixed separator line, so a report holding that line shifted every section after it and a reviewer's valid verdict was refused. Each read now draws its own random separator.
 - **A clean worktree no longer breaks the engine's read of a worker's or reviewer's end signal.** The read's last separator came back without its newline once the output was trimmed, so the report file was taken for a copy of itself and rewritten with the separator on top, and a reviewer's valid verdict was read as invalid (the step stayed in review and looked stalled).
 - **A worker cannot end its step with uncommitted changes.** The `done` label is refused while `git status --porcelain` is not empty in its worktree; the worker is told to commit its work and run the done command again. A chained `commit; hc label … done` whose commit failed no longer hands the step to the reviewer.
 
