@@ -30,7 +30,7 @@ import { nextRecheck } from '#shared/pm/steps'
 const props = defineProps<{ card: Card, pane?: Pane, stopping?: boolean, reporting?: boolean, checking?: boolean, waitsFor?: string[], projectBase?: string }>()
 const emit = defineEmits<{ closed: [], changed: [] }>()
 const open = ref(true)
-const { busy, error, pressing, refused, run, press, start, resume, decide, sendBack, restartReview, startWorker, askCoordinator, askFix } = useTaskActions(() => props.card, () => emit('changed'))
+const { busy, error, pressing, refused, run, press, start, resume, decide, sendBack, restartReview, startWorker, askCoordinator, askFix, markDone } = useTaskActions(() => props.card, () => emit('changed'))
 
 const at = computed(() => (props.card.state?.started ? props.card.state.at : -1))
 const done = computed(() => !!props.card.state?.done)
@@ -97,6 +97,8 @@ const picked = ref<Tab>()
 const tab = computed(() => (picked.value && tabs.value.includes(picked.value) ? picked.value : tabs.value[0]!))
 
 const confirmStop = ref(!!props.stopping)
+const confirmDone = ref(false)
+const finish = () => run(async () => { await markDone(); confirmDone.value = false })
 const why = ref('')
 const stop = () => run(async () => { await stopTaskApi(props.card.id, why.value); confirmStop.value = false })
 // A problem reported to the coordinator: open on the card until it acts or the user withdraws it.
@@ -143,6 +145,7 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
           <AgentButton v-if="!card.archived" :card="card" :primary="todo === 'ask'" />
           <UButton v-if="card.parked?.room && !card.stopped" color="primary" size="xl" icon="i-lucide-play" :loading="busy" :title="tl(`Paused for room on ${card.parked.room}: ${card.parked.need}`)" data-testid="task-room-resume" @click="resume('continue')">{{ tl('Resume now') }}</UButton>
           <UButton v-if="canStop(card) && !confirmStop" color="error" variant="outline" size="xl" icon="i-lucide-square" data-testid="task-stop" @click="confirmStop = true">{{ tl('Stop', 'Arrêter') }}</UButton>
+          <UButton v-if="canStop(card) && !confirmDone" color="neutral" variant="outline" size="xl" icon="i-lucide-check" data-testid="task-done" @click="confirmDone = true">{{ tl('Mark done') }}</UButton>
           <UButton v-if="canCheckGithub(card)" color="neutral" variant="outline" size="xl" icon="i-lucide-refresh-cw" :loading="busy" data-testid="task-check" @click="checkGithub">{{ tl('Check on GitHub') }}</UButton>
           <UButton v-if="card.archived" color="neutral" variant="outline" size="xl" icon="i-lucide-archive-restore" :loading="busy" data-testid="task-unarchive" @click="unarchive">{{ tl('Unarchive') }}</UButton>
           <UButton v-if="card.removable" color="error" variant="outline" size="xl" icon="i-lucide-trash-2" :loading="busy" data-testid="task-remove" @click="remove">{{ tl('Delete…', 'Supprimer…') }}</UButton>
@@ -157,6 +160,13 @@ const remove = () => run(async () => { const yes = await removeTaskApi(props.car
             <UButton color="neutral" variant="outline" size="xl" :disabled="busy" @click="confirmStop = false">{{ t('Cancel') }}</UButton>
           </div>
         </form>
+        <div v-if="canStop(card) && confirmDone" class="task-stop-confirm" data-testid="task-done-confirm">
+          <p>{{ tl('Mark this task done? Nothing is merged or landed and no step runs; it moves to Done as it stands.') }}</p>
+          <div class="task-sheet-actions">
+            <UButton color="primary" size="xl" :loading="busy" data-testid="task-done-yes" @click="finish">{{ tl('Mark done') }}</UButton>
+            <UButton color="neutral" variant="outline" size="xl" :disabled="busy" @click="confirmDone = false">{{ t('Cancel') }}</UButton>
+          </div>
+        </div>
         <TaskReport v-if="canReport && reportOpen" :card="card" :busy="busy" @send="report" @cancel="reportOpen = false" />
         <div v-if="card.report" class="task-report-open" data-testid="task-report-open">
           <p><b>{{ tl('Problem reported') }} {{ fmtTime(card.report.at) }}</b><template v-if="card.report.block"> · {{ tl('merge blocked') }}</template></p>
