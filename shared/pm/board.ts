@@ -19,6 +19,7 @@ import { AGENT_ENDED, retriesAction, waitsShort, wasReleased } from './release'
 import { recovering } from './incident'
 import { needsHumanOpen, needsHumanTurn, type NeedsHuman } from './needsHuman'
 import { showIds } from './projectKey'
+import { repliedOpen } from './elsewhere'
 import { questionKey } from './summary'
 import { MERGE_KINDS, mergedByStep } from './cleanup'
 import type { CardHide } from './reviewHide'
@@ -70,6 +71,7 @@ export interface Card {
   report?: Report // a problem the user reported, open (report.ts)
   workReports?: WorkReport[] // the worker's reports as they arrived (Comments, history.ts)
   tldr?: string // what the user needs to decide, in a few lines (summary.ts)
+  replied?: { at: number, role: 'worker' | 'reviewer', said: string } // the user answered its agent in its own session, at: until the agent reports again (pmReply.ts)
   tldrWaits?: true // a new TL;DR waits for the pace: the notes show instead
   times?: Times // time per step, waits for the user, rounds, CI fixes (times.ts), once started
   archived?: number // when it was archived: off the board, in the Done column's archived list (archive.ts)
@@ -120,6 +122,7 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[], now = Date.
   const worker = live('worker')?.terminal
   const reviewer = live('reviewer')?.terminal
   const stall = stallOf(task, plan, now)
+  const replied = repliedOpen(task)
   const lastWorker = runs.filter(r => r.task === task.id && r.role === 'worker').sort((a, b) => b.startedAt - a.startedAt)[0]
   const branch = lastWorker?.branch
   // A done task (merged, archived) is never the user's turn.
@@ -163,6 +166,7 @@ export function cardOf(task: Task, plan: PlannedStep[], runs: Run[], now = Date.
     plan,
     ...(s ? { state: s } : {}),
     ...(task.workReports?.length ? { workReports: task.workReports } : {}),
+    ...(replied ? { replied } : {}),
     ...(task.stopped ? { stopped: task.stopped } : {}),
     ...(task.state === 'waiting' && task.waitKind ? { asks: { kind: task.waitKind, text: task.waiting?.split('\n')[0] ?? '', ...askedOf(task) } } : {}),
     // Waiting for the engine to resume it after an incident, or for its agent to start again (watchdog.ts): shown as a wait, not the user's turn.

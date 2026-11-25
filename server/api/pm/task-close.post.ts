@@ -2,5 +2,10 @@
 import { userClose } from '../../utils/pmBoard'
 import { pmStore } from '../../utils/pmStore'
 import { publicTask } from '../../../shared/pm/run'
+import { userActedOn } from '../../utils/pmReply'
 
-export default defineApi(async (_event, body) => ({ task: publicTask(await userClose(pmStore(), body.id)) }))
+export default defineApi(async (_event, body) => {
+  const task = await userClose(pmStore(), body.id)
+  await userActedOn(pmStore(), task.id, 'done').catch(() => {})
+  return { task: publicTask(task) }
+})

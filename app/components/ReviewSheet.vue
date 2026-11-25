@@ -269,6 +269,7 @@ function onKey(e: KeyboardEvent) {
           <a v-if="/^https?:\/\//.test(card.needsHuman.url ?? '')" :href="card.needsHuman.url" target="_blank" rel="noopener" data-testid="review-needs-url">{{ card.needsHuman.url }}</a>
         </p>
         <div class="review-scroll">
+        <TaskReplied v-if="card.replied" :replied="card.replied" />
         <template v-if="approves">
           <LookAgainBanner v-if="card.state?.lookAgain" :look="card.state.lookAgain" />
           <TaskTldr :card="card" :worker="notes.worker" :review="notes.review" @comments="answer()">
