@@ -111,9 +111,14 @@ pre{margin:0;padding:10px 12px;border:1px solid #3a3f47;background:#15181d;white
 // exposes wherdr's port; 'foreign': a tailnet device that is not the owner's,
 // without a passkey): the page says why and what to do, without echoing any
 // address.
-export function networkRefusedPage(why?: 'funnel' | 'foreign'): string {
+export function networkRefusedPage(why?: 'funnel' | 'foreign' | 'starting'): string {
   const opt = '<code>WHERDR_TRUSTED_NETWORKS</code>'
-  const copy = why === 'foreign'
+  const copy = why === 'starting'
+    ? {
+        title: 'Tailscale is not up yet.',
+        body: '<p>wherdr cannot yet tell this tailnet connection from a stranger\'s: Tailscale is still starting (often just after the computer boots). This page reloads by itself until it is.</p>',
+      }
+    : why === 'foreign'
     ? {
         title: 'This device is not one of the owner\'s.',
         body: '<p>It is on the tailnet, but Tailscale lists it as another user\'s device or a node shared in from another tailnet. Without a passkey, wherdr only answers its owner\'s own devices.</p><p>The owner can set up a passkey (Settings › Security, from one of their devices): other tailnet devices then reach the lock screen and need that passkey.</p>',
@@ -129,7 +134,7 @@ export function networkRefusedPage(why?: 'funnel' | 'foreign'): string {
         }
   return `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="robots" content="noindex"><title>wherdr · network not allowed</title>
+<meta name="robots" content="noindex">${why === 'starting' ? '<meta http-equiv="refresh" content="3">' : ''}<title>wherdr · network not allowed</title>
 <style>
 :root{color-scheme:dark}*{box-sizing:border-box}
 body{margin:0;min-height:100vh;display:grid;place-items:center;background:#0d0f12;color:#e8eaed;font:15px/1.5 Inter,system-ui,-apple-system,sans-serif;padding:24px max(16px,env(safe-area-inset-right)) 24px max(16px,env(safe-area-inset-left))}

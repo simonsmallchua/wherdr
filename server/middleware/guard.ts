@@ -6,7 +6,7 @@
 // An authenticated request upgrades a cookie from an earlier version (auth.renew).
 import type { H3Event } from 'h3'
 import { crossSiteRequest, hostAllowed, hostRefusalIsHtml, hostRefusedPage, networkRefusedPage } from '../utils/hosts'
-import { checkRequestClient, cliTokenCall, ensureRecent, gateDecision, networkReady } from '../utils/network'
+import { checkRequestClient, cliTokenCall, ensureFresh, ensureRecent, gateDecision, netContext, networkReady } from '../utils/network'
 import { coreRouteAllowed } from '../../shared/coreRoutes'
 import { SHOT_TOKEN_HEADER } from '../../shared/pm/shots'
 import { adoptServed } from '../utils/phone'
@@ -28,7 +28,15 @@ export default defineEventHandler(async (event) => {
   await ensureRecent(HTTP_FRESH_MS, HTTP_BLOCK_MS)
   const path = event.path.split('?')[0]!
   const headers = event.node.req.headers
-  const check = checkRequestClient(event.node.req.socket?.remoteAddress, headers, auth.isEnabled())
+  const peer = event.node.req.socket?.remoteAddress
+  let check = checkRequestClient(peer, headers, auth.isEnabled())
+  // Refused for a reason Tailscale's state may explain (a tailnet client it does
+  // not list yet, e.g. just after boot): read it again now, at most once a
+  // second, rather than judging on a reading up to 10 s old.
+  if (!check.ok && (check.reason === 'forwarded' || check.reason === 'peer' || check.reason === 'foreign')) {
+    await ensureFresh(1000)
+    check = checkRequestClient(peer, headers, auth.isEnabled())
+  }
   // An unknown host: maybe an address `tailscale serve` just published. The
   // request only triggers reading Tailscale again (at most every few
   // seconds); its Host header is never what gets allowed.
@@ -44,7 +52,10 @@ export default defineEventHandler(async (event) => {
   const html = hostRefusalIsHtml(path, headers.accept)
   switch (verdict) {
     case 'network': {
-      const why = !check.ok && (check.reason === 'funnel' || check.reason === 'foreign') ? check.reason : undefined
+      // A tailnet client behind `tailscale serve` while Tailscale is not running
+      // (just after boot): the page retries by itself.
+      const starting = !check.ok && check.reason === 'forwarded' && netContext().tailscale?.running !== true
+      const why = !check.ok && (check.reason === 'funnel' || check.reason === 'foreign') ? check.reason : starting ? 'starting' as const : undefined
       if (html) return htmlRefusal(event, networkRefusedPage(why))
       const error = why === 'funnel'
         ? 'Tailscale Funnel exposes wherdr to the Internet: turn it off for wherdr\'s port'
