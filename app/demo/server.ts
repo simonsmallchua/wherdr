@@ -3,6 +3,7 @@
 // talks to a network or runs a command; agents "answer" with scripted turns.
 import type { ChatItem, HerdrState, Pane, QueuedMessage } from '#shared/types'
 import { applySettingsPatch, cleanSettingsPatch, type SettingsMap } from '../../shared/settings'
+import { applySent, applyToggle, sanitizeChecklist, type ChecklistItem, type ChecklistMark, type ChecklistState } from '../../shared/checklist'
 import * as S from './scenario'
 import { DemoPm } from './pm'
 import { readTaskFile } from './taskFiles'
@@ -39,6 +40,7 @@ export class DemoServer {
   private nextWs = 5
   private seq = 10
   private settings: SettingsMap = {}
+  private checklists: Record<string, ChecklistState> = {}
   private interactive = new Map<string, { cursor: number, details: boolean }>()
   private pm: DemoPm
 
@@ -369,6 +371,7 @@ export class DemoServer {
           const file = readTaskFile(q.get('task'), q.get('in'), q.get('path'))
           return file ? ok(file) : fail(404, DEMO_REFUSAL)
         }
+        case '/api/checklist': return ok({ state: this.checklists[String(q.get('pane_id') || '')] ?? {} })
         case '/api/search': return ok(this.search(String(q.get('q') || '')))
         case '/api/dirs': return ok({ path: S.HOME, parent: null, home: S.HOME, dirs: [
           { name: 'acme-api', path: `${S.HOME}/code/acme-api`, git: true },
@@ -384,6 +387,14 @@ export class DemoServer {
         if (!patch) return fail(400, 'Invalid settings', 'bad_settings')
         this.settings = applySettingsPatch(this.settings, patch, body.migrate === true).next
         return ok({ settings: this.settings })
+      }
+      case '/api/checklist': {
+        const id = String(body.pane_id || '')
+        const state = sanitizeChecklist(this.checklists[id] ?? {})
+        if (body.op === 'toggle') this.checklists[id] = applyToggle(state, String(body.key), { at: Number(body.at) || 0, items: Array.isArray(body.items) ? body.items as ChecklistItem[] : [] }, Number(body.index), body.checked === true)
+        else if (body.op === 'sent') this.checklists[id] = applySent(state, Array.isArray(body.marks) ? body.marks as ChecklistMark[] : [])
+        else return fail(400, 'Invalid checklist', 'bad_input')
+        return ok({ state: this.checklists[id] })
       }
       case '/api/prompt': return this.prompt(paneId, String(body.text || ''), typeof body.client_id === 'string' ? body.client_id : undefined)
       // The app types a written reply to Claude's or Codex's question (see
