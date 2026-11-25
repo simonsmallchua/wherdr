@@ -84,8 +84,9 @@ function wherdrVersion(): string {
 }
 
 // A project's incidents (all of them with no project named), oldest first.
+// Its own tasks' incidents, and the restarts its coordinator was taken up again after.
 const projectIncidents = (list: Incident[], tasks: Task[], key: string) =>
-  key ? list.filter(i => i.tasks.some(id => tasks.find(t => t.id === id)?.project === key)) : list
+  key ? list.filter(i => i.tasks.some(id => tasks.find(t => t.id === id)?.project === key) || i.resumed?.includes(key)) : list
 async function lastOpenIncident(store: PmStore, key: string) {
   const tasks = await store.tasks()
   const open = projectIncidents(await store.incidents(), tasks, key).filter(i => isOpen(i, tasks)).at(-1)

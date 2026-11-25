@@ -28,6 +28,7 @@ import { coordinatorKey } from '../../shared/pm/workspace'
 import { CHAIN_WAIT, chainState } from '../../shared/pm/advance'
 import { isResumeWait, resumeWait } from '../../shared/pm/recovery'
 import { loginExpired, resumeInterrupted, wakeIncidents } from './pmRecovery'
+import { resumeCoordinators } from './pmCoordinatorResume'
 import { advanceTick } from './pmAdvance'
 import { forgetMemory } from './pmMemory'
 import { samplePeaks } from './pmPeaks'
@@ -381,6 +382,7 @@ export async function mechanicTick(deps: PmLaunchDeps, now = Date.now(), doing: 
   // Before the chain: a resumed task's followers then see it working.
   const resumes = await stage('resumeInterrupted', () => resumeInterrupted(deps, now))
   if (resumes) await stage('wakeIncidents', () => wakeIncidents(deps, resumes.busy, now))
+  await stage('resumeCoordinators', () => resumeCoordinators(deps))
   await stage('releaseIdle', () => releaseIdle(deps, now))
   await stage('resumeParked', () => resumeParked(deps, now))
   await stage('startChained', () => startChained(deps, now))

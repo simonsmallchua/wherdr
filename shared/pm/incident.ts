@@ -28,6 +28,7 @@ export interface Incident {
   evidence: string[] // the facts it used
   tasks: string[]
   runs: string[]
+  resumed?: string[] // restart: the coordinators (project keys) the engine took up again by itself (pmCoordinatorResume.ts)
   told?: number // its Incident wake queued (incidentWake.ts)
   program?: string // login: the account's program
   renewed?: number // login: when the credentials file changed, or the user said they logged in
@@ -57,7 +58,7 @@ export const CAUSE_TEXT: Record<Cause, string> = {
 }
 
 // herdr-core's reasons that mean its own stop, a restart or the host shutting down.
-const RESTART_REASONS = ['stopped_by_restart', 'server_stop', 'host_shutdown', 'holder_lost']
+export const RESTART_REASONS = ['stopped_by_restart', 'server_stop', 'host_shutdown', 'holder_lost']
 const OOM_RE = /out of memory|heap out of memory|oom[- ]?kill|cannot allocate memory/i
 const iso = (t: number) => new Date(t).toISOString()
 
@@ -130,4 +131,4 @@ export const openLogins = (incidents: Incident[], tasks: TaskState[]) =>
 
 // What the coordinator reads.
 export const incidentView = (i: Incident, tasks: TaskState[]) =>
-  ({ id: i.id, at: iso(i.at), machine: i.label, cause: i.cause, why: CAUSE_TEXT[i.cause], evidence: i.evidence, tasks: i.tasks, agents: i.runs, open: isOpen(i, tasks) })
+  ({ id: i.id, at: iso(i.at), machine: i.label, cause: i.cause, why: CAUSE_TEXT[i.cause], evidence: i.evidence, tasks: i.tasks, agents: i.runs, open: isOpen(i, tasks), ...(i.resumed?.length ? { resumedCoordinators: i.resumed } : {}) })

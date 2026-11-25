@@ -104,9 +104,12 @@ Under Alfred and [Tasks to review](#tasks-to-review), while project management i
 project's key badge in the project's color, then its name: the project's, unless you named it
 in the project's General tab (*[WHR] wherdr*; the tooltip reads *Coordinator of wherdr*)
 ([Project management](project-management.md)). A tap opens its conversation, shown as selected
-while it is open. A coordinator whose terminal ended (its machine restarted, say) stays, marked
-*Stopped*: a tap offers *Resume the conversation* (its last one, with the agent that ran it and
-the same options) or *New conversation*. One whose first message never reached its session
+while it is open. A coordinator, Alfred included, whose terminal ended in a restart (a reboot, herdr-core restarting) resumes by
+itself within a minute: its last conversation again, with the agent that ran it, once per
+restart, as soon as its machine can run it (always logged in the project's log, Alfred's in its own, and on the restart
+incident when a task's agent ended too). One whose terminal ended any other way (you closed or killed it, an agent that exited)
+stays, marked *Stopped*: a tap offers *Resume the conversation* (its last one, with the agent that
+ran it and the same options) or *New conversation*. One whose first message never reached its session
 (running or stopped) says *First message not delivered*, and its menu starts with *Send again*
 (a new conversation when its session ended). Its menu (right click on a computer, long press on a
 phone, where it opens as a sheet) offers, in order: *Open the board* (filtered on its project),

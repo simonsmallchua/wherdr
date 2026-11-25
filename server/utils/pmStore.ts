@@ -76,6 +76,7 @@ export interface CoordinatorRecord {
   undelivered?: { texts: string[], why: string, at: number, queued?: true } // first messages its session never got; queued: still being typed (coordinatorFirst.ts)
   openTab?: string // Alfred's: the home tab the user had open at their last message (a note scope: all, *group:…, machine:…)
   briefs?: Record<string, number> // Alfred's: when it last ran `brief` for each scope
+  restartResumed?: string // the terminal address whose restart the engine already took the conversation up after (pmCoordinatorResume.ts): never twice for one
 }
 
 export interface AutomationsFile { automations: Automation[], seen?: Record<string, Mark>, proposals?: AutomationProposal[] }
@@ -149,9 +150,9 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     return [...runCache.list]
   }
   const tasks = () => readAll<Task>(files.tasks)
-  // The project's log: the tasks removed, by whom and why.
+  // The project's log: the tasks removed, by whom and why (Alfred's own, under MAIN: what the engine did to it).
   const projectLog = async (key: string) =>
-    (TASK_ID_RE.test(`${key}-1`) ? (await readJson<{ entries?: ProjectLogEntry[] }>(path.join(files.projectLog, `${key}.json`)))?.entries : null) ?? []
+    (key === MAIN || TASK_ID_RE.test(`${key}-1`) ? (await readJson<{ entries?: ProjectLogEntry[] }>(path.join(files.projectLog, `${key}.json`)))?.entries : null) ?? []
   const readProjects = async () => (await readJson<{ projects?: Project[] }>(files.projects))?.projects ?? []
   // A list with a workspace mistake (workspace.ts) is never saved.
   const saveProjects = (list: Project[]) => {
@@ -438,7 +439,7 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     }),
     projectLog,
     logProject: (key: string, entry: Omit<ProjectLogEntry, 'at'>) => write(async () => {
-      if (!KEY_RE.test(key)) throw new HerdrError('not_found', 'Unknown project')
+      if (key !== MAIN && !KEY_RE.test(key)) throw new HerdrError('not_found', 'Unknown project')
       const entries = await projectLog(key)
       await writeJson(path.join(files.projectLog, `${key}.json`), { v: 1, entries: [...entries, { at: Date.now(), ...entry }].slice(-500) })
     }),
@@ -488,6 +489,11 @@ export function createPmStore(dir = path.join(DATA_DIR, 'projects')) {
     toldIncidents: (ids: string[], at: number) => write(async () => {
       const old = (await readJson<{ incidents?: Incident[] }>(files.incidents))?.incidents ?? []
       await writeJson(files.incidents, { v: 1, incidents: old.map(i => (ids.includes(i.id) ? { ...i, told: at } : i)) })
+    }),
+    // A restart incident's coordinators the engine took up again.
+    resumedIncident: (id: string, key: string) => write(async () => {
+      const old = (await readJson<{ incidents?: Incident[] }>(files.incidents))?.incidents ?? []
+      await writeJson(files.incidents, { v: 1, incidents: old.map(i => (i.id === id && !i.resumed?.includes(key) ? { ...i, resumed: [...(i.resumed ?? []), key] } : i)) })
     }),
     automations: async (key: string): Promise<AutomationsFile> =>
       ({ automations: [], ...(TASK_ID_RE.test(`${key}-1`) ? await readJson<AutomationsFile>(path.join(files.automations, `${key}.json`)) : null) }),
