@@ -170,6 +170,7 @@ const countersOn = showCounters
 const quotasOn = showQuotas
 const autoReorderOn = autoReorderReady
 const encryptedOn = encryptedText
+const copyOnSelectOn = copyOnSelect
 const agentClipboardOn = agentClipboard
 // Dictation: Off, then the engines this build has (utils/dictation/registry.ts). Per device.
 const dictationChoice = dictationEngine
@@ -521,6 +522,13 @@ onMounted(() => {
               <h3>{{ t('Default pane view') }}</h3>
               <URadioGroup v-model="defaultPane" :items="defaultPaneItems" variant="table" indicator="end" color="primary" size="lg" class="settings-radio" />
               <p class="muted settings-hint">{{ t('What an agent pane opens on. A pane you switched to Terminal stays there. Follows you on every device.') }}</p>
+            </div>
+            <div data-ui-target="conversation.copy-on-select" class="settings-group">
+              <h3>{{ t('Copy on select') }}</h3>
+              <label class="settings-toggle">
+                <span><b>{{ t('Copy text as soon as you select it') }}</b><small>{{ t('Selecting text with the mouse, in a conversation or a terminal, copies it at once and shows Copied. Never in a text field. On by default on a computer, off on a phone. Follows you on every device.') }}</small></span>
+                <USwitch v-model="copyOnSelectOn" size="xl" />
+              </label>
             </div>
             <div data-ui-target="conversation.typewriter" class="settings-group settings-typing">
               <h3>{{ t('Typewriter') }}</h3>
