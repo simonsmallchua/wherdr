@@ -72,6 +72,9 @@ async function launch(cands: [string, string[]][], env: Env, platform: string): 
   return false
 }
 
+// A file in the default application of this computer (xdg-open, `open` on macOS), as a double-click does.
+export const openWithDefaultApp = (file: string) => launch(process.platform === 'darwin' ? [['open', [file]]] : [['xdg-open', [file]]], desktopEnv(process.env, process.getuid?.() ?? 0), process.platform)
+
 export interface OpenTerminalDeps {
   findPane: (id: string) => { cwd: string | null } | undefined
   // The folder a written path means for this pane, when it is a folder.

@@ -311,6 +311,29 @@ ${OPEN_FILE}
   shift 2
 done`
 
+// Whether each (root, rel) pair opens as a preview would (symlinks resolved,
+// under its root, protected files refused), in one run.
+export async function existsIn(m: Machine, pairs: { root: string, rel: string }[]): Promise<boolean[]> {
+  if (!pairs.length) return []
+  const out = (await run(m, EXISTS_SCRIPT, ['', ...pairs.flatMap(x => [x.root, x.rel])], { timeoutMs: 20000 })).toString('utf8').split('\n')
+  return pairs.map((_, i) => out[i] === '1')
+}
+
+// For each bare file name, the first file of that name under `root` (at most 5 folders
+// deep, never inside .git or node_modules), as a path under it; '' where there is none.
+// The caller checks each path again with existsIn.
+export const FIND_SCRIPT = `root=$1; shift
+for n in "$@"; do
+  f=$(find "$root" -maxdepth 5 \\( -name node_modules -o -name .git \\) -prune -o -type f -name "$n" -print 2>/dev/null | head -n 1)
+  case "$f" in "$root"/*) echo "\${f#"$root"/}";; *) echo;; esac
+done`
+
+export async function findByName(m: Machine, root: string, names: string[]): Promise<string[]> {
+  if (!names.length) return []
+  const out = (await run(m, FIND_SCRIPT, [root, ...names], { timeoutMs: 20000 })).toString('utf8').split('\n')
+  return names.map((_, i) => out[i] ?? '')
+}
+
 // The same pairs as folders: 1 when the folder, symlinks resolved, lies under its root.
 export const DIR_EXISTS_SCRIPT = `while [ "$#" -ge 2 ]; do
   r=$(cd -P -- "$1" 2>/dev/null && pwd -P) && d=$(cd -P -- "$1/$2" 2>/dev/null && pwd -P) && case "$d" in "$r"/*) echo 1;; *) echo 0;; esac || echo 0
@@ -421,6 +444,13 @@ export async function readFileBytes(m: Machine, cwd: string, rel: unknown) {
   const p = cleanRelative(rel)
   if (!p) throw new HerdrError('not_file', 'Not a file')
   const root = await rootOf(m, cwd)
+  refuseProtected(m, path.posix.join(root, p))
+  return bytesAt(m, root, p)
+}
+
+export async function readBytesIn(m: Machine, root: string, rel: unknown) {
+  const p = cleanRelative(rel)
+  if (!p) throw new HerdrError('not_file', 'Not a file')
   refuseProtected(m, path.posix.join(root, p))
   return bytesAt(m, root, p)
 }

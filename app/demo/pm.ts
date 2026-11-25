@@ -8,6 +8,7 @@ import { publicTask, taskPlan, type Task } from '../../shared/pm/run'
 import { MAIN, type CoordinatorView } from '../../shared/pm/coordinator'
 import { dismiss, hideOf, show, snooze, snoozeEnd, type Hidden } from '../../shared/pm/reviewHide'
 import * as P from './projects'
+import { taskFiles } from './taskFiles'
 
 type Reply = { status: number, body: unknown }
 const ok = (body: unknown): Reply => ({ status: 200, body })
@@ -59,6 +60,8 @@ export class DemoPm {
   }
 
   post(path: string, body: Record<string, unknown>): Reply | null {
+    // The files a task's To review names (the demo has WEB-10's two documents).
+    if (path === '/api/pm/task-files') return ok({ found: taskFiles(body.task, body.paths) })
     const t = this.tasks.find(x => x.id === body.id)
     if (path === '/api/pm/step-user' && t) return this.press(t)
     if (path === '/api/pm/review-hide' && t) return this.hide(t, body)

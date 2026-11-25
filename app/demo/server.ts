@@ -5,6 +5,7 @@ import type { ChatItem, HerdrState, Pane, QueuedMessage } from '#shared/types'
 import { applySettingsPatch, cleanSettingsPatch, type SettingsMap } from '../../shared/settings'
 import * as S from './scenario'
 import { DemoPm } from './pm'
+import { readTaskFile } from './taskFiles'
 
 export const DEMO_REFUSAL = 'Demo — nothing runs here. Install wherdr to drive your own agents.'
 
@@ -364,7 +365,10 @@ export class DemoServer {
               { name: 'package.json', kind: 'file', size: 412, link: false },
               { name: 'README.md', kind: 'file', size: 88, link: false },
             ] })
-        case '/api/files/read': return fail(404, DEMO_REFUSAL)
+        case '/api/files/read': {
+          const file = readTaskFile(q.get('task'), q.get('in'), q.get('path'))
+          return file ? ok(file) : fail(404, DEMO_REFUSAL)
+        }
         case '/api/search': return ok(this.search(String(q.get('q') || '')))
         case '/api/dirs': return ok({ path: S.HOME, parent: null, home: S.HOME, dirs: [
           { name: 'acme-api', path: `${S.HOME}/code/acme-api`, git: true },
